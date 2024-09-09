@@ -1,8 +1,8 @@
-import { resolvePackage } from '@directus/utils/node';
-import type { Knex } from 'knex';
-import { randomUUID } from 'node:crypto';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {resolvePackage} from '@directus/utils/node';
+import type {Knex} from 'knex';
+import {randomUUID} from 'node:crypto';
+import {dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -19,11 +19,11 @@ export async function up(knex: Knex): Promise<void> {
 	// name: id
 	const idMap = new Map<string, { id: string; source: 'local' | 'module' }>();
 
-	for (const { name } of installedExtensions) {
+	for (const {name} of installedExtensions) {
 		// Delete extension meta status that used the legacy `${name}:${type}` name syntax for
 		// extension-folder scoped extensions
 		if (name.includes(':')) {
-			await knex('directus_extensions').delete().where({ name });
+			await knex('directus_extensions').delete().where({name});
 		} else {
 			const id = randomUUID();
 
@@ -38,12 +38,12 @@ export async function up(knex: Knex): Promise<void> {
 				source = 'local';
 			}
 
-			await knex('directus_extensions').update({ id, source, folder: name }).where({ name });
-			idMap.set(name, { id, source });
+			await knex('directus_extensions').update({id, source, folder: name}).where({name});
+			idMap.set(name, {id, source});
 		}
 	}
 
-	for (const { name } of installedExtensions) {
+	for (const {name} of installedExtensions) {
 		if (!name.includes('/')) continue;
 
 		const splittedName = name.split('/');
@@ -67,19 +67,43 @@ export async function up(knex: Knex): Promise<void> {
 				folder: name.substring(bundleParentName.length + 1),
 				source: bundleParent.source,
 			})
-			.where({ folder: name });
+			.where({folder: name});
 	}
 
 	await knex.schema.alterTable('directus_extensions', (table) => {
 		table.uuid('id').alter().notNullable();
 	});
 
-	await knex.transaction(async (trx) => {
-		await trx.schema.alterTable('directus_extensions', (table) => {
-			table.dropPrimary();
-			table.primary(['id']);
-		});
+	// await knex.transaction(async (trx) => {
+	// 	await trx.schema.alterTable('directus_extensions', (table) => {
+	// 		table.dropPrimary();
+	// 		table.primary(['id']);
+	// 	});
+	// });
+
+	//Workaround for TIDB
+	await knex.schema.createTable('directus_extensions_new', (table) => {
+		table.uuid('id').primary().notNullable();
+		table.boolean('enabled').defaultTo(true).notNullable();
+		table.string('name');
+		table.string('folder');
+		table.string('source');
+		table.uuid('bundle');
 	});
+
+	try {
+		// Copy the data from the old table to the new table
+		const rows = await knex.select('*').from('directus_extensions');
+		await knex('directus_extensions_new').insert(rows);
+	} catch (e) {
+
+	}
+
+	await knex.schema.renameTable('directus_extensions', 'directus_extensions_old');
+
+	await knex.schema.renameTable('directus_extensions_new', 'directus_extensions');
+
+	await knex.schema.dropTable('directus_extensions_old');
 
 	await knex.schema.alterTable('directus_extensions', (table) => {
 		table.dropColumn('name');
@@ -102,9 +126,9 @@ export async function down(knex: Knex): Promise<void> {
 
 	const idMap = new Map<string, string>(installedExtensions.map((extension) => [extension.id, extension.folder]));
 
-	for (const { id, folder, bundle, source } of installedExtensions) {
+	for (const {id, folder, bundle, source} of installedExtensions) {
 		if (source === 'registry') {
-			await knex('directus_extensions').delete().where({ id });
+			await knex('directus_extensions').delete().where({id});
 			continue;
 		}
 
@@ -116,7 +140,7 @@ export async function down(knex: Knex): Promise<void> {
 			name = `${bundleParentName}/${name}`;
 		}
 
-		await knex('directus_extensions').update({ name }).where({ id });
+		await knex('directus_extensions').update({name}).where({id});
 	}
 
 	await knex.schema.alterTable('directus_extensions', (table) => {

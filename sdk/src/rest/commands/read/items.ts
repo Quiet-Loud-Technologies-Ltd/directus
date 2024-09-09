@@ -29,7 +29,8 @@ export const readItems =
 	): RestCommand<ReadItemOutput<Schema, Collection, TQuery>[], Schema> =>
 	() => {
 		throwIfEmpty(String(collection), 'Collection cannot be empty');
-		throwIfCoreCollection(collection, 'Cannot use readItems for core collections');
+		//throwIfCoreCollection(collection, 'Cannot use readItems for core collections');
+
 
 		return {
 			path: `/items/${collection as string}`,
